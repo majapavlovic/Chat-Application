@@ -1,0 +1,8 @@
+# Visual Studio / .NET
+.vs/
+**/.vs/
+bin/
+obj/
+**/bin/
+**/obj/
+
