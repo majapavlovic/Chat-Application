@@ -6,3 +6,12 @@ obj/
 **/bin/
 **/obj/
 
+# React
+node_modules/
+**/node_modules/
+
+build/
+dist/
+**/build/
+**/dist/
+.cache/
