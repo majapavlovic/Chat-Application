@@ -23,6 +23,12 @@ builder.Services.AddCors(options =>
     });
 });
 
+builder.Services.AddHttpClient("messaging", c =>
+{
+    c.BaseAddress = new Uri("http://localhost:5129");
+});
+
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
