@@ -28,8 +28,6 @@ builder.Services.AddDbContext<MessagingDbContext>(opt =>
 var app = builder.Build();
 
 
-app.UseHttpsRedirection();
-
 app.UseRouting();
 
 app.UseCors("gateway");

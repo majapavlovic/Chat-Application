@@ -1,10 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getChatConnection } from "../signalr/connection";
 import * as signalR from "@microsoft/signalr";
-import { ChatPayload } from "../common/types";
+import { ChatPayload, MessageDto } from "../common/types";
+
+async function fetchHistory(roomId: string): Promise<MessageDto[]> {
+  const res = await fetch(
+    `http://localhost:5046/api/chat/rooms/${encodeURIComponent(
+      roomId
+    )}/messages`
+  );
+  if (!res.ok) throw new Error(`History fetch failed: ${res.status}`);
+  return res.json();
+}
 
 export const ChatRoom = () => {
-  const [roomId, setRoomId] = useState("room-1");
+  const [roomId, setRoomId] = useState("");
 
   const [text, setText] = useState("");
   const [log, setLog] = useState<string[]>([]);
@@ -47,7 +57,7 @@ export const ChatRoom = () => {
 
     const onReconnected = async () => {
       setConnected(true);
-      setLog((prev) => ["[system] Reconnected ✅", ...prev]);
+      setLog((prev) => ["[system] Reconnected", ...prev]);
       try {
         await connection.invoke("JoinRoom", roomId);
         setLog((prev) => [`[system] Re-joined ${roomId}`, ...prev]);
@@ -118,17 +128,61 @@ export const ChatRoom = () => {
     }
   };
 
+  useEffect(() => {
+    let cancelled = false;
+    setLog([]);
+    setText("");
+
+    (async () => {
+      try {
+        const items = await fetchHistory(roomId);
+        if (cancelled) return;
+
+        const lines = items
+          .sort(
+            (a, b) =>
+              new Date(a.persistedAtUtc).getTime() -
+              new Date(b.persistedAtUtc).getTime()
+          )
+          .map((m) => `[${m.roomId}] ${m.senderId}: ${m.text}`);
+
+        setLog(lines.reverse());
+      } catch (e) {
+        setLog([`[system] ${String(e)}`]);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [roomId]);
+
   const send = async () => {
     const msg = text.trim();
     if (!msg) return;
 
-    try {
-      await connection.invoke("SendMessage", roomId, msg);
-      setText("");
-    } catch (err) {
-      setLog((prev) => [`Send error: ${String(err)}`, ...prev]);
-    }
+    const clientMessageId = crypto.randomUUID();
+    await connection.invoke("SendMessage", roomId, msg, clientMessageId);
+
+    setText("");
   };
+
+  const prevRoomRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        if (prevRoomRef.current && prevRoomRef.current !== roomId) {
+          await connection.invoke("LeaveRoom", prevRoomRef.current);
+        }
+
+        await connection.invoke("JoinRoom", roomId);
+        prevRoomRef.current = roomId;
+      } catch (e) {
+        setLog((p) => [`[system] Join/Leave error: ${String(e)}`, ...p]);
+      }
+    })();
+  }, [roomId, connection]);
 
   return (
     <div style={{ padding: 16, fontFamily: "sans-serif", maxWidth: 700 }}>

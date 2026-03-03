@@ -7,4 +7,5 @@ public class MessageEntity
     public string SenderId { get; set; } = default!;
     public string Text { get; set; } = default!;
     public DateTime PersistedAtUtc { get; set; }
+    public string ClientMessageId { get; set; } = default!;
 }

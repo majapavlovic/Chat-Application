@@ -20,6 +20,9 @@ public class MessagingDbContext : DbContext
         m.Property(x => x.SenderId).IsRequired().HasMaxLength(200);
         m.Property(x => x.Text).IsRequired().HasMaxLength(4000);
         m.Property(x => x.PersistedAtUtc).IsRequired();
+        m.Property(x => x.ClientMessageId).IsRequired().HasMaxLength(100);
+
+        m.HasIndex(x => x.ClientMessageId).IsUnique();
 
         m.HasIndex(x => new { x.RoomId, x.PersistedAtUtc });
     }

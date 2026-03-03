@@ -4,3 +4,11 @@ export type ChatPayload = {
   message: string;
   ts?: string;
 };
+
+export type MessageDto = {
+  messageId: string;
+  roomId: string;
+  senderId: string;
+  text: string;
+  persistedAtUtc: string;
+};

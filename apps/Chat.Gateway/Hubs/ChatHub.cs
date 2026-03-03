@@ -17,7 +17,12 @@ public class ChatHub : Hub
         await Groups.AddToGroupAsync(Context.ConnectionId, roomId);
         // await Clients.Caller.SendAsync("System", $"Joined room {roomId}");
     }
-    public async Task SendMessage(string roomId, string message)
+
+    public async Task LeaveRoom(string roomId)
+    {
+        await Groups.RemoveFromGroupAsync(Context.ConnectionId, roomId);
+    }
+    public async Task SendMessage(string roomId, string message, string clientMessageId)
     {
         var client = _httpClientFactory.CreateClient("messaging");
 
@@ -25,7 +30,9 @@ public class ChatHub : Hub
         {
             roomId,
             senderId = Context.ConnectionId,
-            text = message
+            text = message,
+            clientMessageId
+
         };
 
         var res = await client.PostAsJsonAsync("/api/messages", req);
