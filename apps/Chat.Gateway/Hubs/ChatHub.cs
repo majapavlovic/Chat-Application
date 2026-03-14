@@ -12,27 +12,26 @@ public class ChatHub : Hub
         _httpClientFactory = httpClientFactory;
     }
 
-    public async Task JoinRoom(string roomId)
+    public async Task JoinConversation(string conversationId)
     {
-        await Groups.AddToGroupAsync(Context.ConnectionId, roomId);
-        // await Clients.Caller.SendAsync("System", $"Joined room {roomId}");
+        await Groups.AddToGroupAsync(Context.ConnectionId, conversationId);
     }
 
-    public async Task LeaveRoom(string roomId)
+    public async Task LeaveConversation(string conversationId)
     {
-        await Groups.RemoveFromGroupAsync(Context.ConnectionId, roomId);
+        await Groups.RemoveFromGroupAsync(Context.ConnectionId, conversationId);
     }
-    public async Task SendMessage(string roomId, string message, string clientMessageId)
+
+    public async Task SendMessage(string conversationId, string senderId, string message, string clientMessageId)
     {
         var client = _httpClientFactory.CreateClient("messaging");
 
         var req = new
         {
-            roomId,
-            senderId = Context.ConnectionId,
+            conversationId,
+            senderId,
             text = message,
             clientMessageId
-
         };
 
         var res = await client.PostAsJsonAsync("/api/messages", req);
@@ -43,8 +42,6 @@ public class ChatHub : Hub
             return;
         }
 
-
-
         var saved = await res.Content.ReadFromJsonAsync<MessageDto>();
 
         if (saved is null)
@@ -53,10 +50,10 @@ public class ChatHub : Hub
             return;
         }
 
-        await Clients.Group(roomId).SendAsync("ReceiveMessage", new
+        await Clients.Group(conversationId).SendAsync("ReceiveMessage", new
         {
-            roomId = saved.RoomId,
-            user = saved.SenderId,
+            conversationId = saved.ConversationId,
+            senderId = saved.SenderId,
             message = saved.Text,
             ts = saved.PersistedAtUtc,
             messageId = saved.MessageId

@@ -16,10 +16,11 @@ namespace Chat.MessagingService.Migrations
                 columns: table => new
                 {
                     Id = table.Column<Guid>(type: "uuid", nullable: false),
-                    RoomId = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
+                    ConversationId = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
                     SenderId = table.Column<string>(type: "character varying(200)", maxLength: 200, nullable: false),
                     Text = table.Column<string>(type: "character varying(4000)", maxLength: 4000, nullable: false),
-                    PersistedAtUtc = table.Column<DateTime>(type: "timestamp with time zone", nullable: false)
+                    PersistedAtUtc = table.Column<DateTime>(type: "timestamp with time zone", nullable: false),
+                    ClientMessageId = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false)
                 },
                 constraints: table =>
                 {
@@ -27,9 +28,15 @@ namespace Chat.MessagingService.Migrations
                 });
 
             migrationBuilder.CreateIndex(
-                name: "IX_messages_RoomId_PersistedAtUtc",
+                name: "IX_messages_ClientMessageId",
                 table: "messages",
-                columns: new[] { "RoomId", "PersistedAtUtc" });
+                column: "ClientMessageId",
+                unique: true);
+
+            migrationBuilder.CreateIndex(
+                name: "IX_messages_ConversationId_PersistedAtUtc",
+                table: "messages",
+                columns: new[] { "ConversationId", "PersistedAtUtc" });
         }
 
         /// <inheritdoc />

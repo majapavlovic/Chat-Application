@@ -15,16 +15,16 @@ public class MessagesController : ControllerBase
 
     public MessagesController(MessagingDbContext db) => _db = db;
 
-    [HttpGet("{roomId}")]
-    public async Task<ActionResult<IEnumerable<MessageDto>>> GetByRoom(string roomId)
+    [HttpGet("conversation/{conversationId}")]
+    public async Task<ActionResult<IEnumerable<MessageDto>>> GetByConversation(string conversationId)
     {
         var items = await _db.Messages
             .AsNoTracking()
-            .Where(m => m.RoomId == roomId)
+            .Where(m => m.ConversationId == conversationId)
             .OrderBy(m => m.PersistedAtUtc)
             .Select(m => new MessageDto(
                 m.Id.ToString("N"),
-                m.RoomId,
+                m.ConversationId,
                 m.SenderId,
                 m.Text,
                 m.PersistedAtUtc
@@ -37,11 +37,11 @@ public class MessagesController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<MessageDto>> Create([FromBody] CreateMessageRequest req)
     {
-        if (string.IsNullOrWhiteSpace(req.RoomId) ||
+        if (string.IsNullOrWhiteSpace(req.ConversationId) ||
             string.IsNullOrWhiteSpace(req.SenderId) ||
             string.IsNullOrWhiteSpace(req.Text) ||
             string.IsNullOrWhiteSpace(req.ClientMessageId))
-            return BadRequest("RoomId, SenderId, Text and ClientMessageId are required.");
+            return BadRequest("ConversationId, SenderId, Text and ClientMessageId are required.");
 
         var existing = await _db.Messages
             .AsNoTracking()
@@ -55,7 +55,7 @@ public class MessagesController : ControllerBase
         var entity = new MessageEntity
         {
             Id = Guid.NewGuid(),
-            RoomId = req.RoomId.Trim(),
+            ConversationId = req.ConversationId.Trim(),
             SenderId = req.SenderId.Trim(),
             Text = req.Text.Trim(),
             ClientMessageId = req.ClientMessageId.Trim(),
@@ -84,7 +84,7 @@ public class MessagesController : ControllerBase
 
     private static MessageDto ToDto(MessageEntity m) => new(
         m.Id.ToString("N"),
-        m.RoomId,
+        m.ConversationId,
         m.SenderId,
         m.Text,
         m.PersistedAtUtc

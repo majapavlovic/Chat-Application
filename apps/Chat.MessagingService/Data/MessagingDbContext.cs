@@ -16,7 +16,7 @@ public class MessagingDbContext : DbContext
         m.ToTable("messages");
         m.HasKey(x => x.Id);
 
-        m.Property(x => x.RoomId).IsRequired().HasMaxLength(200);
+        m.Property(x => x.ConversationId).IsRequired().HasMaxLength(200);
         m.Property(x => x.SenderId).IsRequired().HasMaxLength(200);
         m.Property(x => x.Text).IsRequired().HasMaxLength(4000);
         m.Property(x => x.PersistedAtUtc).IsRequired();
@@ -24,6 +24,6 @@ public class MessagingDbContext : DbContext
 
         m.HasIndex(x => x.ClientMessageId).IsUnique();
 
-        m.HasIndex(x => new { x.RoomId, x.PersistedAtUtc });
+        m.HasIndex(x => new { x.ConversationId, x.PersistedAtUtc });
     }
 }

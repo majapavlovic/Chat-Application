@@ -33,13 +33,13 @@ namespace Chat.MessagingService.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
-                    b.Property<DateTime>("PersistedAtUtc")
-                        .HasColumnType("timestamp with time zone");
-
-                    b.Property<string>("RoomId")
+                    b.Property<string>("ConversationId")
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime>("PersistedAtUtc")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("SenderId")
                         .IsRequired()
@@ -56,7 +56,7 @@ namespace Chat.MessagingService.Migrations
                     b.HasIndex("ClientMessageId")
                         .IsUnique();
 
-                    b.HasIndex("RoomId", "PersistedAtUtc");
+                    b.HasIndex("ConversationId", "PersistedAtUtc");
 
                     b.ToTable("messages", (string)null);
                 });

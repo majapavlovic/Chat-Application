@@ -13,12 +13,12 @@ public class ChatHistoryController : ControllerBase
         _httpClientFactory = httpClientFactory;
     }
 
-    [HttpGet("rooms/{roomId}/messages")]
-    public async Task<IActionResult> GetRoomMessages(string roomId)
+    [HttpGet("conversations/{conversationId}/messages")]
+    public async Task<IActionResult> GetConversationMessages(string conversationId)
     {
         var client = _httpClientFactory.CreateClient("messaging");
 
-        var res = await client.GetAsync($"/api/messages/{Uri.EscapeDataString(roomId)}");
+        var res = await client.GetAsync($"/api/messages/conversation/{Uri.EscapeDataString(conversationId)}");
         if (!res.IsSuccessStatusCode)
         {
             return StatusCode((int)res.StatusCode);

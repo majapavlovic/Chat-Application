@@ -28,6 +28,16 @@ builder.Services.AddHttpClient("messaging", c =>
     c.BaseAddress = new Uri("http://localhost:5129");
 });
 
+builder.Services.AddHttpClient("conversation", c =>
+{
+    c.BaseAddress = new Uri("http://localhost:5282");
+});
+
+builder.Services.AddHttpClient("users", c =>
+{
+    c.BaseAddress = new Uri("http://localhost:5355");
+});
+
 
 var app = builder.Build();
 
