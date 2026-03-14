@@ -3,25 +3,34 @@ import { getChatConnection } from "../signalr/connection";
 import * as signalR from "@microsoft/signalr";
 import { ChatPayload, MessageDto } from "../common/types";
 
-async function fetchHistory(roomId: string): Promise<MessageDto[]> {
+type ConversationProps = {
+  conversationId: string;
+  senderId: string;
+};
+
+async function fetchHistory(conversationId: string): Promise<MessageDto[]> {
+  if (!conversationId.trim()) return [];
+
   const res = await fetch(
-    `http://localhost:5046/api/chat/rooms/${encodeURIComponent(
-      roomId
-    )}/messages`
+    `http://localhost:5046/api/chat/conversations/${encodeURIComponent(
+      conversationId,
+    )}/messages`,
   );
   if (!res.ok) throw new Error(`History fetch failed: ${res.status}`);
   return res.json();
 }
 
-export const ChatRoom = () => {
-  const [roomId, setRoomId] = useState("");
-
+export const Conversation = ({
+  conversationId,
+  senderId,
+}: ConversationProps) => {
   const [text, setText] = useState("");
   const [log, setLog] = useState<string[]>([]);
   const [connected, setConnected] = useState(false);
 
   const startingRef = useRef(false);
   const mountedRef = useRef(false);
+  const activeConversationRef = useRef("");
 
   const connection = useMemo(() => getChatConnection(), []);
 
@@ -34,7 +43,7 @@ export const ChatRoom = () => {
 
     const onReceive = (payload: ChatPayload) => {
       setLog((prev) => [
-        `[${payload.roomId}] ${payload.user}: ${payload.message}`,
+        `[${payload.conversationId}] ${payload.senderId}: ${payload.message}`,
         ...prev,
       ]);
     };
@@ -59,8 +68,11 @@ export const ChatRoom = () => {
       setConnected(true);
       setLog((prev) => ["[system] Reconnected", ...prev]);
       try {
-        await connection.invoke("JoinRoom", roomId);
-        setLog((prev) => [`[system] Re-joined ${roomId}`, ...prev]);
+        const activeConversation = activeConversationRef.current;
+        if (!activeConversation.trim()) return;
+
+        await connection.invoke("JoinConversation", activeConversation);
+        setLog((prev) => [`[system] Re-joined ${activeConversation}`, ...prev]);
       } catch (e) {
         setLog((prev) => [`[system] Re-join failed: ${String(e)}`, ...prev]);
       }
@@ -119,14 +131,9 @@ export const ChatRoom = () => {
     };
   }, [connection]);
 
-  const join = async () => {
-    try {
-      await connection.invoke("JoinRoom", roomId);
-      setLog((prev) => [`[system] Joined ${roomId}`, ...prev]);
-    } catch (err) {
-      setLog((prev) => [`Join error: ${String(err)}`, ...prev]);
-    }
-  };
+  useEffect(() => {
+    activeConversationRef.current = conversationId;
+  }, [conversationId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -135,16 +142,16 @@ export const ChatRoom = () => {
 
     (async () => {
       try {
-        const items = await fetchHistory(roomId);
+        const items = await fetchHistory(conversationId);
         if (cancelled) return;
 
         const lines = items
           .sort(
             (a, b) =>
               new Date(a.persistedAtUtc).getTime() -
-              new Date(b.persistedAtUtc).getTime()
+              new Date(b.persistedAtUtc).getTime(),
           )
-          .map((m) => `[${m.roomId}] ${m.senderId}: ${m.text}`);
+          .map((m) => `[${m.conversationId}] ${m.senderId}: ${m.text}`);
 
         setLog(lines.reverse());
       } catch (e) {
@@ -155,49 +162,56 @@ export const ChatRoom = () => {
     return () => {
       cancelled = true;
     };
-  }, [roomId]);
+  }, [conversationId]);
 
   const send = async () => {
     const msg = text.trim();
-    if (!msg) return;
+    if (!msg || !conversationId.trim() || !senderId.trim()) return;
 
     const clientMessageId = crypto.randomUUID();
-    await connection.invoke("SendMessage", roomId, msg, clientMessageId);
+    await connection.invoke(
+      "SendMessage",
+      conversationId,
+      senderId,
+      msg,
+      clientMessageId,
+    );
 
     setText("");
   };
 
-  const prevRoomRef = useRef<string | null>(null);
+  const prevConversationRef = useRef<string | null>(null);
 
   useEffect(() => {
     (async () => {
       try {
-        if (prevRoomRef.current && prevRoomRef.current !== roomId) {
-          await connection.invoke("LeaveRoom", prevRoomRef.current);
+        if (
+          prevConversationRef.current &&
+          prevConversationRef.current !== conversationId
+        ) {
+          await connection.invoke(
+            "LeaveConversation",
+            prevConversationRef.current,
+          );
         }
 
-        await connection.invoke("JoinRoom", roomId);
-        prevRoomRef.current = roomId;
+        if (conversationId.trim()) {
+          await connection.invoke("JoinConversation", conversationId);
+          prevConversationRef.current = conversationId;
+        }
       } catch (e) {
         setLog((p) => [`[system] Join/Leave error: ${String(e)}`, ...p]);
       }
     })();
-  }, [roomId, connection]);
+  }, [conversationId, connection]);
 
   return (
     <div style={{ padding: 16, fontFamily: "sans-serif", maxWidth: 700 }}>
-      <h2>Chat Gateway (SignalR)</h2>
+      <h2>Chat</h2>
 
-      <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-        <input
-          value={roomId}
-          onChange={(e) => setRoomId(e.target.value)}
-          placeholder='room id'
-          style={{ flex: 1, padding: 8 }}
-        />
-        <button onClick={join} disabled={!connected}>
-          Join
-        </button>
+      <div style={{ marginBottom: 12, fontSize: 14 }}>
+        <div>Conversation: {conversationId || "-"}</div>
+        <div>Sender: {senderId || "-"}</div>
       </div>
 
       <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
@@ -208,7 +222,10 @@ export const ChatRoom = () => {
           style={{ flex: 1, padding: 8 }}
           onKeyDown={(e) => (e.key === "Enter" ? send() : null)}
         />
-        <button onClick={send} disabled={!connected}>
+        <button
+          onClick={send}
+          disabled={!connected || !conversationId || !senderId}
+        >
           Send
         </button>
       </div>

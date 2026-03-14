@@ -1,10 +1,8 @@
-import React from "react";
-import logo from "./logo.svg";
 import "./App.css";
-import { ChatRoom } from "./components/ChatRoom";
+import { ChatDashboard } from "./components/ChatDashboard";
 
 function App() {
-  return <ChatRoom />;
+  return <ChatDashboard />;
 }
 
 export default App;

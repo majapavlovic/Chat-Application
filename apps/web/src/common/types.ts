@@ -1,14 +1,30 @@
 export type ChatPayload = {
-  roomId: string;
-  user: string;
+  conversationId: string;
+  senderId: string;
   message: string;
   ts?: string;
 };
 
 export type MessageDto = {
   messageId: string;
-  roomId: string;
+  conversationId: string;
   senderId: string;
   text: string;
   persistedAtUtc: string;
+};
+
+export type UserDto = {
+  userId: string;
+  displayName: string;
+  isOnline: boolean;
+  lastSeenAtUtc?: string | null;
+  createdAtUtc: string;
+};
+
+export type ConversationDto = {
+  conversationId: string;
+  type: number;
+  name?: string | null;
+  createdAtUtc: string;
+  participantIds: string[];
 };
