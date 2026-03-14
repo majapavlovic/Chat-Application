@@ -38,6 +38,11 @@ builder.Services.AddHttpClient("users", c =>
     c.BaseAddress = new Uri("http://localhost:5355");
 });
 
+builder.Services.AddHttpClient("auth", c =>
+{
+    c.BaseAddress = new Uri("http://localhost:5455");
+});
+
 
 var app = builder.Build();
 
