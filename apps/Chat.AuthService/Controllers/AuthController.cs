@@ -29,10 +29,11 @@ public class AuthController : ControllerBase
     [HttpPost("register")]
     public async Task<ActionResult<AuthResponse>> Register([FromBody] RegisterRequest req)
     {
-        if (string.IsNullOrWhiteSpace(req.DisplayName) ||
+        if (string.IsNullOrWhiteSpace(req.Username) ||
+            string.IsNullOrWhiteSpace(req.DisplayName) ||
             string.IsNullOrWhiteSpace(req.Password))
         {
-            return BadRequest("DisplayName and Password are required.");
+            return BadRequest("Username, DisplayName and Password are required.");
         }
 
         if (req.Password.Length < 8)
@@ -40,11 +41,22 @@ public class AuthController : ControllerBase
             return BadRequest("Password must be at least 8 characters.");
         }
 
+        var normalizedUsername = req.Username.Trim().ToLowerInvariant();
+        var usernameExists = await _db.Accounts
+            .AsNoTracking()
+            .AnyAsync(a => a.Username == normalizedUsername);
+
+        if (usernameExists)
+        {
+            return Conflict("Username already exists.");
+        }
+
         var now = DateTime.UtcNow;
         var account = new AuthAccountEntity
         {
             Id = Guid.NewGuid(),
             UserId = Guid.NewGuid().ToString("N"),
+            Username = normalizedUsername,
             DisplayName = req.DisplayName.Trim(),
             CreatedAtUtc = now,
             UpdatedAtUtc = now
@@ -57,18 +69,19 @@ public class AuthController : ControllerBase
 
         var (token, expiresAtUtc) = _jwtTokenService.CreateAccessToken(account);
 
-        return Ok(new AuthResponse(token, expiresAtUtc, account.UserId, account.DisplayName));
+        return Ok(new AuthResponse(token, expiresAtUtc, account.UserId, account.Username, account.DisplayName));
     }
 
     [HttpPost("login")]
     public async Task<ActionResult<AuthResponse>> Login([FromBody] LoginRequest req)
     {
-        if (string.IsNullOrWhiteSpace(req.UserId) || string.IsNullOrWhiteSpace(req.Password))
+        if (string.IsNullOrWhiteSpace(req.Username) || string.IsNullOrWhiteSpace(req.Password))
         {
-            return BadRequest("UserId and Password are required.");
+            return BadRequest("Username and Password are required.");
         }
 
-        var account = await _db.Accounts.FirstOrDefaultAsync(a => a.UserId == req.UserId.Trim());
+        var normalizedUsername = req.Username.Trim().ToLowerInvariant();
+        var account = await _db.Accounts.FirstOrDefaultAsync(a => a.Username == normalizedUsername);
         if (account is null)
         {
             return Unauthorized("Invalid credentials.");
@@ -82,7 +95,7 @@ public class AuthController : ControllerBase
 
         var (token, expiresAtUtc) = _jwtTokenService.CreateAccessToken(account);
 
-        return Ok(new AuthResponse(token, expiresAtUtc, account.UserId, account.DisplayName));
+        return Ok(new AuthResponse(token, expiresAtUtc, account.UserId, account.Username, account.DisplayName));
     }
 
     [Authorize]
@@ -90,6 +103,7 @@ public class AuthController : ControllerBase
     public ActionResult<CurrentUserDto> Me()
     {
         var userId = User.FindFirstValue(JwtRegisteredClaimNames.Sub) ?? User.FindFirstValue(ClaimTypes.NameIdentifier);
+        var username = User.FindFirstValue("username") ?? User.FindFirstValue(ClaimTypes.Name);
         var displayName = User.FindFirstValue(JwtRegisteredClaimNames.UniqueName) ?? User.Identity?.Name;
 
         if (string.IsNullOrWhiteSpace(userId))
@@ -97,6 +111,6 @@ public class AuthController : ControllerBase
             return Unauthorized();
         }
 
-        return Ok(new CurrentUserDto(userId, displayName ?? userId));
+        return Ok(new CurrentUserDto(userId, username ?? userId, displayName ?? username ?? userId));
     }
 }

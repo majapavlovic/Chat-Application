@@ -22,7 +22,11 @@ public class UsersController : ControllerBase
         if (!string.IsNullOrWhiteSpace(query))
         {
             var q = query.Trim();
-            usersQuery = usersQuery.Where(u => u.Id.Contains(q) || u.DisplayName.Contains(q));
+            usersQuery = usersQuery.Where(u =>
+                u.Id.Contains(q) ||
+                u.Username.Contains(q) ||
+                u.DisplayName.Contains(q)
+            );
         }
 
         var users = await usersQuery
@@ -35,7 +39,9 @@ public class UsersController : ControllerBase
     [HttpGet("{userId}")]
     public async Task<ActionResult<UserDto>> GetById(string userId)
     {
-        var user = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == userId);
+        var normalizedUserId = userId.Trim();
+        var normalizedUserIdLower = normalizedUserId.ToLowerInvariant();
+        var user = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id.ToLower() == normalizedUserIdLower);
         if (user is null) return NotFound();
 
         return Ok(ToDto(user));
@@ -44,19 +50,54 @@ public class UsersController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<UserDto>> Create([FromBody] CreateUserRequest req)
     {
-        if (string.IsNullOrWhiteSpace(req.UserId) || string.IsNullOrWhiteSpace(req.DisplayName))
-            return BadRequest("UserId and DisplayName are required.");
+        if (string.IsNullOrWhiteSpace(req.UserId) ||
+            string.IsNullOrWhiteSpace(req.Username) ||
+            string.IsNullOrWhiteSpace(req.DisplayName))
+            return BadRequest(new { message = "UserId, Username and DisplayName are required." });
 
-        var normalizedUserId = req.UserId.Trim();
-        var existing = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == normalizedUserId);
+        var normalizedUserId = req.UserId.Trim().ToLowerInvariant();
+        var normalizedUsername = req.Username.Trim().ToLowerInvariant();
+        var normalizedDisplayName = req.DisplayName.Trim();
+        var existing = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id.ToLower() == normalizedUserId);
 
         if (existing is not null)
             return Ok(ToDto(existing));
 
+        var existingByUsername = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Username == normalizedUsername);
+        if (existingByUsername is not null)
+        {
+            var previousUserId = existingByUsername.Id;
+
+            await _db.Database.ExecuteSqlInterpolatedAsync(
+                $"UPDATE users SET \"Id\" = {normalizedUserId}, \"DisplayName\" = {normalizedDisplayName} WHERE \"Username\" = {normalizedUsername};"
+            );
+
+            var previousUserIdLower = previousUserId.ToLowerInvariant();
+
+            await _db.Database.ExecuteSqlInterpolatedAsync(
+                $"UPDATE user_connections SET \"UserAId\" = {normalizedUserId} WHERE lower(\"UserAId\") = {previousUserIdLower};"
+            );
+            await _db.Database.ExecuteSqlInterpolatedAsync(
+                $"UPDATE user_connections SET \"UserBId\" = {normalizedUserId} WHERE lower(\"UserBId\") = {previousUserIdLower};"
+            );
+            await _db.Database.ExecuteSqlInterpolatedAsync(
+                $"UPDATE user_connections SET \"RequestedByUserId\" = {normalizedUserId} WHERE lower(\"RequestedByUserId\") = {previousUserIdLower};"
+            );
+
+            var remapped = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id.ToLower() == normalizedUserId);
+            if (remapped is not null)
+            {
+                return Ok(ToDto(remapped));
+            }
+
+            return StatusCode(500, new { message = "Failed to remap existing user profile." });
+        }
+
         var entity = new UserEntity
         {
             Id = normalizedUserId,
-            DisplayName = req.DisplayName.Trim(),
+            Username = normalizedUsername,
+            DisplayName = normalizedDisplayName,
             IsOnline = false,
             LastSeenAtUtc = null,
             CreatedAtUtc = DateTime.UtcNow
@@ -71,7 +112,8 @@ public class UsersController : ControllerBase
     [HttpPatch("{userId}/presence")]
     public async Task<IActionResult> UpdatePresence(string userId, [FromBody] UpdatePresenceRequest req)
     {
-        var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == userId);
+        var normalizedUserId = userId.Trim().ToLowerInvariant();
+        var user = await _db.Users.FirstOrDefaultAsync(u => u.Id.ToLower() == normalizedUserId);
         if (user is null) return NotFound();
 
         user.IsOnline = req.IsOnline;
@@ -83,6 +125,7 @@ public class UsersController : ControllerBase
 
     private static UserDto ToDto(UserEntity u) => new(
         u.Id,
+        u.Username,
         u.DisplayName,
         u.IsOnline,
         u.LastSeenAtUtc,

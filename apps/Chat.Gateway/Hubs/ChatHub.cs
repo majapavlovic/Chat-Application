@@ -1,8 +1,11 @@
 ﻿using Microsoft.AspNetCore.SignalR;
 using Chat.Gateway.Models;
+using Microsoft.AspNetCore.Authorization;
+using System.Security.Claims;
 
 namespace Chat.Gateway.Hubs;
 
+[Authorize]
 public class ChatHub : Hub
 {
     private readonly IHttpClientFactory _httpClientFactory;
@@ -22,8 +25,17 @@ public class ChatHub : Hub
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, conversationId);
     }
 
-    public async Task SendMessage(string conversationId, string senderId, string message, string clientMessageId)
+    public async Task SendMessage(string conversationId, string message, string clientMessageId)
     {
+        var senderId = Context.User?.FindFirstValue("sub")
+            ?? Context.User?.FindFirstValue(ClaimTypes.NameIdentifier);
+
+        if (string.IsNullOrWhiteSpace(senderId))
+        {
+            await Clients.Caller.SendAsync("System", "Unauthorized sender.");
+            return;
+        }
+
         var client = _httpClientFactory.CreateClient("messaging");
 
         var req = new

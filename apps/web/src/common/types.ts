@@ -15,6 +15,7 @@ export type MessageDto = {
 
 export type UserDto = {
   userId: string;
+  username: string;
   displayName: string;
   isOnline: boolean;
   lastSeenAtUtc?: string | null;
@@ -27,4 +28,18 @@ export type ConversationDto = {
   name?: string | null;
   createdAtUtc: string;
   participantIds: string[];
+};
+
+export type AuthResponse = {
+  accessToken: string;
+  expiresAtUtc: string;
+  userId: string;
+  username: string;
+  displayName: string;
+};
+
+export type CurrentUserDto = {
+  userId: string;
+  username: string;
+  displayName: string;
 };

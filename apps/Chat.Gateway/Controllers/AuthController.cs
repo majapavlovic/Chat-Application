@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using System.Text.Json;
 
 namespace Chat.Gateway.Controllers;
 
@@ -18,9 +19,8 @@ public class AuthController : ControllerBase
     {
         var client = _httpClientFactory.CreateClient("auth");
         var res = await client.PostAsJsonAsync("/api/auth/register", body);
-        var payload = await res.Content.ReadFromJsonAsync<object>();
 
-        return StatusCode((int)res.StatusCode, payload);
+        return await ToActionResultAsync(res);
     }
 
     [HttpPost("login")]
@@ -28,25 +28,74 @@ public class AuthController : ControllerBase
     {
         var client = _httpClientFactory.CreateClient("auth");
         var res = await client.PostAsJsonAsync("/api/auth/login", body);
-        var payload = await res.Content.ReadFromJsonAsync<object>();
 
-        return StatusCode((int)res.StatusCode, payload);
+        return await ToActionResultAsync(res);
     }
 
     [HttpGet("me")]
     public async Task<IActionResult> Me()
     {
-        var client = _httpClientFactory.CreateClient("auth");
-
-        if (Request.Headers.TryGetValue("Authorization", out var authHeader))
+        if (!Request.Headers.TryGetValue("Authorization", out var authHeader))
         {
-            client.DefaultRequestHeaders.Authorization =
-                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", authHeader.ToString().Replace("Bearer ", "", StringComparison.OrdinalIgnoreCase).Trim());
+            return Unauthorized();
         }
 
-        var res = await client.GetAsync("/api/auth/me");
-        var payload = await res.Content.ReadFromJsonAsync<object>();
+        var token = authHeader.ToString().Replace("Bearer ", "", StringComparison.OrdinalIgnoreCase).Trim();
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            return Unauthorized();
+        }
 
-        return StatusCode((int)res.StatusCode, payload);
+        var client = _httpClientFactory.CreateClient("auth");
+        client.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+        var res = await client.GetAsync("/api/auth/me");
+
+        return await ToActionResultAsync(res);
+    }
+
+    private async Task<IActionResult> ToActionResultAsync(HttpResponseMessage res)
+    {
+        var statusCode = (int)res.StatusCode;
+        var raw = await res.Content.ReadAsStringAsync();
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            if (!res.IsSuccessStatusCode)
+            {
+                return StatusCode(statusCode, new
+                {
+                    message = res.ReasonPhrase ?? "Request failed.",
+                    statusCode
+                });
+            }
+
+            return StatusCode(statusCode);
+        }
+
+        var contentType = res.Content.Headers.ContentType?.MediaType;
+        if (!string.IsNullOrWhiteSpace(contentType) &&
+            contentType.Contains("json", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                var payload = JsonSerializer.Deserialize<object>(raw);
+                return StatusCode(statusCode, payload);
+            }
+            catch
+            {
+            }
+        }
+
+        if (!res.IsSuccessStatusCode)
+        {
+            return StatusCode(statusCode, new
+            {
+                message = raw,
+                statusCode
+            });
+        }
+
+        return StatusCode(statusCode, raw);
     }
 }

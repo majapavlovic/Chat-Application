@@ -15,11 +15,13 @@ public class AuthDbContext : DbContext
         a.ToTable("auth_accounts");
         a.HasKey(x => x.Id);
         a.Property(x => x.UserId).IsRequired().HasMaxLength(200);
+        a.Property(x => x.Username).IsRequired().HasMaxLength(100);
         a.Property(x => x.DisplayName).IsRequired().HasMaxLength(200);
         a.Property(x => x.PasswordHash).IsRequired();
         a.Property(x => x.CreatedAtUtc).IsRequired();
         a.Property(x => x.UpdatedAtUtc).IsRequired();
 
         a.HasIndex(x => x.UserId).IsUnique();
+        a.HasIndex(x => x.Username).IsUnique();
     }
 }

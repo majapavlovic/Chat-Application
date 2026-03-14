@@ -1,6 +1,6 @@
 namespace Chat.AuthService.Models;
 
 public record LoginRequest(
-    string UserId,
+    string Username,
     string Password
 );

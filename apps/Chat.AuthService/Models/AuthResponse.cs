@@ -4,5 +4,6 @@ public record AuthResponse(
     string AccessToken,
     DateTime ExpiresAtUtc,
     string UserId,
+    string Username,
     string DisplayName
 );

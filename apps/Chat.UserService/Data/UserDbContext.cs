@@ -16,10 +16,12 @@ public class UserDbContext : DbContext
         u.ToTable("users");
         u.HasKey(x => x.Id);
         u.Property(x => x.Id).HasMaxLength(200);
+        u.Property(x => x.Username).IsRequired().HasMaxLength(100);
         u.Property(x => x.DisplayName).IsRequired().HasMaxLength(200);
         u.Property(x => x.IsOnline).IsRequired();
         u.Property(x => x.LastSeenAtUtc);
         u.Property(x => x.CreatedAtUtc).IsRequired();
+        u.HasIndex(x => x.Username).IsUnique();
 
         var c = modelBuilder.Entity<UserConnectionEntity>();
         c.ToTable("user_connections");
