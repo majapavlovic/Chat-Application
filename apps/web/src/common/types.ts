@@ -31,8 +31,6 @@ export type ConversationDto = {
 };
 
 export type AuthResponse = {
-  accessToken: string;
-  expiresAtUtc: string;
   userId: string;
   username: string;
   displayName: string;

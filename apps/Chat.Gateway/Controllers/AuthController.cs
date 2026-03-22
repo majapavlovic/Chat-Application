@@ -1,11 +1,11 @@
 using Microsoft.AspNetCore.Mvc;
-using System.Text.Json;
+using System.Net.Http.Json;
 
 namespace Chat.Gateway.Controllers;
 
 [ApiController]
 [Route("api/auth")]
-public class AuthController : ControllerBase
+public class AuthController : GatewayControllerBase
 {
     private readonly IHttpClientFactory _httpClientFactory;
 
@@ -20,7 +20,10 @@ public class AuthController : ControllerBase
         var client = _httpClientFactory.CreateClient("auth");
         var res = await client.PostAsJsonAsync("/api/auth/register", body);
 
-        return await ToActionResultAsync(res);
+        if (!res.IsSuccessStatusCode)
+            return await ToActionResultAsync(res);
+
+        return await HandleAuthResponseAsync(res);
     }
 
     [HttpPost("login")]
@@ -29,73 +32,113 @@ public class AuthController : ControllerBase
         var client = _httpClientFactory.CreateClient("auth");
         var res = await client.PostAsJsonAsync("/api/auth/login", body);
 
-        return await ToActionResultAsync(res);
+        if (!res.IsSuccessStatusCode)
+            return await ToActionResultAsync(res);
+
+        return await HandleAuthResponseAsync(res);
+    }
+
+    [HttpPost("refresh")]
+    public async Task<IActionResult> Refresh()
+    {
+        var refreshToken = Request.Cookies["refresh_token"];
+        if (string.IsNullOrWhiteSpace(refreshToken))
+            return Unauthorized(new { message = "No refresh token." });
+
+        var client = _httpClientFactory.CreateClient("auth");
+        var res = await client.PostAsJsonAsync("/api/auth/refresh", new { refreshToken });
+
+        if (!res.IsSuccessStatusCode)
+        {
+            ClearAuthCookies();
+            return await ToActionResultAsync(res);
+        }
+
+        return await HandleAuthResponseAsync(res);
+    }
+
+    [HttpPost("logout")]
+    public async Task<IActionResult> Logout()
+    {
+        var refreshToken = Request.Cookies["refresh_token"];
+        if (!string.IsNullOrWhiteSpace(refreshToken))
+        {
+            var client = _httpClientFactory.CreateClient("auth");
+            await client.PostAsJsonAsync("/api/auth/revoke", new { refreshToken });
+        }
+
+        ClearAuthCookies();
+        return NoContent();
     }
 
     [HttpGet("me")]
     public async Task<IActionResult> Me()
     {
-        if (!Request.Headers.TryGetValue("Authorization", out var authHeader))
+        var token = Request.Cookies["access_token"];
+
+        if (string.IsNullOrWhiteSpace(token) &&
+            Request.Headers.TryGetValue("Authorization", out var authHeader))
         {
-            return Unauthorized();
+            token = authHeader.ToString().Replace("Bearer ", "", StringComparison.OrdinalIgnoreCase).Trim();
         }
 
-        var token = authHeader.ToString().Replace("Bearer ", "", StringComparison.OrdinalIgnoreCase).Trim();
         if (string.IsNullOrWhiteSpace(token))
-        {
             return Unauthorized();
-        }
 
         var client = _httpClientFactory.CreateClient("auth");
         client.DefaultRequestHeaders.Authorization =
             new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
 
         var res = await client.GetAsync("/api/auth/me");
-
         return await ToActionResultAsync(res);
     }
 
-    private async Task<IActionResult> ToActionResultAsync(HttpResponseMessage res)
+    private async Task<IActionResult> HandleAuthResponseAsync(HttpResponseMessage res)
     {
-        var statusCode = (int)res.StatusCode;
-        var raw = await res.Content.ReadAsStringAsync();
-        if (string.IsNullOrWhiteSpace(raw))
-        {
-            if (!res.IsSuccessStatusCode)
-            {
-                return StatusCode(statusCode, new
-                {
-                    message = res.ReasonPhrase ?? "Request failed.",
-                    statusCode
-                });
-            }
+        var auth = await res.Content.ReadFromJsonAsync<InternalAuthResponse>();
+        if (auth is null)
+            return StatusCode(502, new { message = "Invalid response from auth service." });
 
-            return StatusCode(statusCode);
-        }
+        SetAuthCookies(auth.AccessToken, auth.ExpiresAtUtc,
+                       auth.RefreshToken, auth.RefreshTokenExpiresAtUtc);
 
-        var contentType = res.Content.Headers.ContentType?.MediaType;
-        if (!string.IsNullOrWhiteSpace(contentType) &&
-            contentType.Contains("json", StringComparison.OrdinalIgnoreCase))
-        {
-            try
-            {
-                var payload = JsonSerializer.Deserialize<object>(raw);
-                return StatusCode(statusCode, payload);
-            }
-            catch
-            {
-            }
-        }
-
-        if (!res.IsSuccessStatusCode)
-        {
-            return StatusCode(statusCode, new
-            {
-                message = raw,
-                statusCode
-            });
-        }
-
-        return StatusCode(statusCode, raw);
+        return Ok(new { auth.UserId, auth.Username, auth.DisplayName });
     }
+
+    private void SetAuthCookies(string accessToken, DateTime accessExpiry,
+                                string refreshToken, DateTime refreshExpiry)
+    {
+        Response.Cookies.Append("access_token", accessToken, new CookieOptions
+        {
+            HttpOnly = true,
+            Secure = false,
+            SameSite = SameSiteMode.Lax,
+            Path = "/",
+            Expires = accessExpiry
+        });
+
+        Response.Cookies.Append("refresh_token", refreshToken, new CookieOptions
+        {
+            HttpOnly = true,
+            Secure = false,
+            SameSite = SameSiteMode.Lax,
+            Path = "/api/auth",
+            Expires = refreshExpiry
+        });
+    }
+
+    private void ClearAuthCookies()
+    {
+        Response.Cookies.Delete("access_token", new CookieOptions { Path = "/" });
+        Response.Cookies.Delete("refresh_token", new CookieOptions { Path = "/api/auth" });
+    }
+
+    private record InternalAuthResponse(
+        string AccessToken,
+        DateTime ExpiresAtUtc,
+        string UserId,
+        string Username,
+        string DisplayName,
+        string RefreshToken,
+        DateTime RefreshTokenExpiresAtUtc);
 }

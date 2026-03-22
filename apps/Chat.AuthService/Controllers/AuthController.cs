@@ -3,11 +3,13 @@ using System.Security.Claims;
 using Chat.AuthService.Data;
 using Chat.AuthService.Data.Entities;
 using Chat.AuthService.Models;
+using Chat.AuthService.Options;
 using Chat.AuthService.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace Chat.AuthService.Controllers;
 
@@ -18,11 +20,13 @@ public class AuthController : ControllerBase
     private readonly AuthDbContext _db;
     private readonly PasswordHasher<AuthAccountEntity> _passwordHasher;
     private readonly JwtTokenService _jwtTokenService;
+    private readonly JwtOptions _jwtOptions;
 
-    public AuthController(AuthDbContext db, JwtTokenService jwtTokenService)
+    public AuthController(AuthDbContext db, JwtTokenService jwtTokenService, IOptions<JwtOptions> jwtOptions)
     {
         _db = db;
         _jwtTokenService = jwtTokenService;
+        _jwtOptions = jwtOptions.Value;
         _passwordHasher = new PasswordHasher<AuthAccountEntity>();
     }
 
@@ -65,11 +69,9 @@ public class AuthController : ControllerBase
         account.PasswordHash = _passwordHasher.HashPassword(account, req.Password);
 
         _db.Accounts.Add(account);
-        await _db.SaveChangesAsync();
 
-        var (token, expiresAtUtc) = _jwtTokenService.CreateAccessToken(account);
-
-        return Ok(new AuthResponse(token, expiresAtUtc, account.UserId, account.Username, account.DisplayName));
+        var response = await CreateAuthResponseAsync(account);
+        return Ok(response);
     }
 
     [HttpPost("login")]
@@ -93,9 +95,65 @@ public class AuthController : ControllerBase
             return Unauthorized("Invalid credentials.");
         }
 
-        var (token, expiresAtUtc) = _jwtTokenService.CreateAccessToken(account);
+        var response = await CreateAuthResponseAsync(account);
+        return Ok(response);
+    }
 
-        return Ok(new AuthResponse(token, expiresAtUtc, account.UserId, account.Username, account.DisplayName));
+    [HttpPost("refresh")]
+    public async Task<ActionResult<AuthResponse>> Refresh([FromBody] RefreshRequest req)
+    {
+        var existingToken = await _db.RefreshTokens
+            .FirstOrDefaultAsync(rt => rt.Token == req.RefreshToken);
+
+        if (existingToken is null || !existingToken.IsActive)
+        {
+            return Unauthorized("Invalid or expired refresh token.");
+        }
+
+        var account = await _db.Accounts
+            .FirstOrDefaultAsync(a => a.UserId == existingToken.UserId);
+
+        if (account is null)
+        {
+            return Unauthorized("Account not found.");
+        }
+
+        existingToken.RevokedAtUtc = DateTime.UtcNow;
+        var newRefreshString = _jwtTokenService.GenerateRefreshTokenString();
+        existingToken.ReplacedByToken = newRefreshString;
+
+        var refreshExpiry = DateTime.UtcNow.AddDays(_jwtOptions.RefreshTokenExpiryDays);
+        _db.RefreshTokens.Add(new RefreshTokenEntity
+        {
+            Id = Guid.NewGuid(),
+            UserId = account.UserId,
+            Token = newRefreshString,
+            ExpiresAtUtc = refreshExpiry,
+            CreatedAtUtc = DateTime.UtcNow
+        });
+
+        var (accessToken, accessExpiry) = _jwtTokenService.CreateAccessToken(account);
+        await _db.SaveChangesAsync();
+
+        return Ok(new AuthResponse(accessToken, accessExpiry, account.UserId,
+            account.Username, account.DisplayName, newRefreshString, refreshExpiry));
+    }
+
+    [HttpPost("revoke")]
+    public async Task<IActionResult> Revoke([FromBody] RevokeRequest req)
+    {
+        var token = await _db.RefreshTokens
+            .FirstOrDefaultAsync(rt => rt.Token == req.RefreshToken);
+
+        if (token is null)
+        {
+            return NotFound();
+        }
+
+        token.RevokedAtUtc = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        return NoContent();
     }
 
     [Authorize]
@@ -112,5 +170,27 @@ public class AuthController : ControllerBase
         }
 
         return Ok(new CurrentUserDto(userId, username ?? userId, displayName ?? username ?? userId));
+    }
+
+    private async Task<AuthResponse> CreateAuthResponseAsync(AuthAccountEntity account)
+    {
+        var (accessToken, accessExpiry) = _jwtTokenService.CreateAccessToken(account);
+
+        var refreshTokenString = _jwtTokenService.GenerateRefreshTokenString();
+        var refreshExpiry = DateTime.UtcNow.AddDays(_jwtOptions.RefreshTokenExpiryDays);
+
+        _db.RefreshTokens.Add(new RefreshTokenEntity
+        {
+            Id = Guid.NewGuid(),
+            UserId = account.UserId,
+            Token = refreshTokenString,
+            ExpiresAtUtc = refreshExpiry,
+            CreatedAtUtc = DateTime.UtcNow
+        });
+
+        await _db.SaveChangesAsync();
+
+        return new AuthResponse(accessToken, accessExpiry, account.UserId,
+            account.Username, account.DisplayName, refreshTokenString, refreshExpiry);
     }
 }

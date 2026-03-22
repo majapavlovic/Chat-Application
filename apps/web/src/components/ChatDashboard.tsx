@@ -13,6 +13,7 @@ import {
 import { ConversationDto, UserDto } from "../common/types";
 import { Conversation } from "./ConversationComponent";
 import { UserSidebar } from "./UserSidebar";
+import { resetChatConnection } from "../signalr/connection";
 
 export function ChatDashboard() {
   const [users, setUsers] = useState<UserDto[]>([]);
@@ -99,21 +100,18 @@ export function ChatDashboard() {
     void loadConversations(activeUserId).catch((e) => setError(String(e)));
   }, [activeUserId]);
 
-  const handleSelectUser = async (userId: string) => {
+  const handleSelectUser = (userId: string) => {
     setError("");
-    try {
-      if (userId !== activeUserId) {
-        setDirectUserId(userId);
-      }
-    } catch (e) {
-      setError(String(e));
+    if (userId !== activeUserId) {
+      setDirectUserId(userId);
     }
   };
 
   const handleRegister = async () => {
     setError("");
     try {
-      logout();
+      await logout();
+      await resetChatConnection();
       setIsAuthenticated(false);
       setActiveUserId("");
 
@@ -123,13 +121,11 @@ export function ChatDashboard() {
         password: authPasswordInput,
       });
 
-      const me = await fetchMe();
       setIsAuthenticated(true);
-      setActiveUserId(me.userId);
-      setAuthUsernameInput(me.username);
-      await createUser(auth.userId, auth.username, auth.displayName);
-      await updatePresence(me.userId, true);
-      await loadUsers(me.userId);
+      setActiveUserId(auth.userId);
+      setAuthUsernameInput(auth.username);
+      await ensureUserPresence(auth.userId, auth.username, auth.displayName);
+      await loadUsers(auth.userId);
     } catch (e) {
       setError(String(e));
     }
@@ -138,7 +134,8 @@ export function ChatDashboard() {
   const handleLogin = async () => {
     setError("");
     try {
-      logout();
+      await logout();
+      await resetChatConnection();
       setIsAuthenticated(false);
       setActiveUserId("");
 
@@ -165,7 +162,8 @@ export function ChatDashboard() {
       } catch {}
     }
 
-    logout();
+    await logout();
+    await resetChatConnection();
     setIsAuthenticated(false);
     setActiveUserId("");
     setConversations([]);
@@ -274,7 +272,7 @@ export function ChatDashboard() {
           onDirectUserIdChange={setDirectUserId}
           onGroupNameChange={setGroupName}
           onGroupMembersChange={setGroupMembers}
-          onSelectUser={(userId) => void handleSelectUser(userId)}
+          onSelectUser={handleSelectUser}
           onCreateDirect={() => void handleCreateDirect()}
           onCreateGroup={() => void handleCreateGroup()}
         />

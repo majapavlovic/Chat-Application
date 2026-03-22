@@ -2,29 +2,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { getChatConnection } from "../signalr/connection";
 import * as signalR from "@microsoft/signalr";
 import { ChatPayload, MessageDto } from "../common/types";
-import { getAccessToken } from "../auth/tokenStore";
+import { fetchMessages } from "../api/chatApi";
 
 type ConversationProps = {
   conversationId: string;
   senderId: string;
 };
-
-const api = process.env.REACT_APP_API_ENDPOINT ?? "http://localhost:5046";
-
-async function fetchHistory(conversationId: string): Promise<MessageDto[]> {
-  if (!conversationId.trim()) return [];
-
-  const res = await fetch(
-    `${api}/api/chat/conversations/${encodeURIComponent(
-      conversationId,
-    )}/messages`,
-    {
-      headers: getAccessToken() ? { Authorization: `Bearer ${getAccessToken()}` } : {},
-    },
-  );
-  if (!res.ok) throw new Error(`History fetch failed: ${res.status}`);
-  return res.json();
-}
 
 export const Conversation = ({
   conversationId,
@@ -148,7 +131,7 @@ export const Conversation = ({
 
     (async () => {
       try {
-        const items = await fetchHistory(conversationId);
+        const items = await fetchMessages(conversationId);
         if (cancelled) return;
 
         const lines = items
@@ -175,7 +158,12 @@ export const Conversation = ({
     if (!msg || !conversationId.trim() || !senderId.trim()) return;
 
     const clientMessageId = crypto.randomUUID();
-    await connection.invoke("SendMessage", conversationId, msg, clientMessageId);
+    await connection.invoke(
+      "SendMessage",
+      conversationId,
+      msg,
+      clientMessageId,
+    );
 
     setText("");
   };
