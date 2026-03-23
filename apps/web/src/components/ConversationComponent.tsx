@@ -1,17 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getChatConnection } from "../signalr/connection";
 import * as signalR from "@microsoft/signalr";
-import { ChatPayload, MessageDto } from "../common/types";
+import { ChatPayload, MessageDto, UserDto } from "../common/types";
 import { fetchMessages } from "../api/chatApi";
 
 type ConversationProps = {
   conversationId: string;
   senderId: string;
+  title: string;
+  userMap: Record<string, UserDto>;
 };
 
 export const Conversation = ({
   conversationId,
   senderId,
+  title,
+  userMap,
 }: ConversationProps) => {
   const [text, setText] = useState("");
   const [log, setLog] = useState<string[]>([]);
@@ -20,6 +24,14 @@ export const Conversation = ({
   const startingRef = useRef(false);
   const mountedRef = useRef(false);
   const activeConversationRef = useRef("");
+  const userMapRef = useRef(userMap);
+
+  useEffect(() => {
+    userMapRef.current = userMap;
+  }, [userMap]);
+
+  const resolveName = (userId: string) =>
+    userMapRef.current[userId]?.displayName ?? userId;
 
   const connection = useMemo(() => getChatConnection(), []);
 
@@ -32,7 +44,7 @@ export const Conversation = ({
 
     const onReceive = (payload: ChatPayload) => {
       setLog((prev) => [
-        `[${payload.conversationId}] ${payload.senderId}: ${payload.message}`,
+        `${resolveName(payload.senderId)}: ${payload.message}`,
         ...prev,
       ]);
     };
@@ -140,7 +152,7 @@ export const Conversation = ({
               new Date(a.persistedAtUtc).getTime() -
               new Date(b.persistedAtUtc).getTime(),
           )
-          .map((m) => `[${m.conversationId}] ${m.senderId}: ${m.text}`);
+          .map((m) => `${userMap[m.senderId]?.displayName ?? m.senderId}: ${m.text}`);
 
         setLog(lines.reverse());
       } catch (e) {
@@ -195,12 +207,7 @@ export const Conversation = ({
 
   return (
     <div style={{ padding: 16, fontFamily: "sans-serif", maxWidth: 700 }}>
-      <h2>Chat</h2>
-
-      <div style={{ marginBottom: 12, fontSize: 14 }}>
-        <div>Conversation: {conversationId || "-"}</div>
-        <div>Sender: {senderId || "-"}</div>
-      </div>
+      <h2>{title || "Chat"}</h2>
 
       <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
         <input

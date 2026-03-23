@@ -6,6 +6,11 @@ obj/
 **/bin/
 **/obj/
 
+appsettings.Local.json
+**/appsettings.Local.json
+appsettings.*.Local.json
+**/appsettings.*.Local.json
+
 # React
 node_modules/
 **/node_modules/

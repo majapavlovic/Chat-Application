@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   createConversation,
   createUser,
@@ -28,6 +28,26 @@ export function ChatDashboard() {
   const [authDisplayNameInput, setAuthDisplayNameInput] = useState("");
   const [authPasswordInput, setAuthPasswordInput] = useState("");
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  const userMap = useMemo(
+    () => Object.fromEntries(users.map((u) => [u.userId, u])),
+    [users],
+  );
+
+  const conversationTitle = (conv: ConversationDto): string => {
+    if (conv.name?.trim()) return conv.name.trim();
+    if (conv.type === 1) {
+      const otherId = conv.participantIds.find((id) => id !== activeUserId);
+      return otherId
+        ? (userMap[otherId]?.displayName ?? userMap[otherId]?.username ?? otherId)
+        : "Direct chat";
+    }
+    const names = conv.participantIds
+      .filter((id) => id !== activeUserId)
+      .map((id) => userMap[id]?.displayName ?? id)
+      .join(", ");
+    return names || "Group";
+  };
 
   const ensureUserPresence = async (
     userId: string,
@@ -250,7 +270,7 @@ export function ChatDashboard() {
             Logout
           </button>
           <div style={{ alignSelf: "center" }}>
-            Current user: {activeUserId || "-"}
+            Current user: {(userMap[activeUserId]?.displayName ?? authUsernameInput) || "-"}
           </div>
         </div>
       </div>
@@ -281,7 +301,7 @@ export function ChatDashboard() {
           <div
             style={{ border: "1px solid #ddd", padding: 12, marginBottom: 12 }}
           >
-            <h3>Conversations for {activeUserId || "-"}</h3>
+            <h3>Conversations for {(userMap[activeUserId]?.displayName ?? authUsernameInput) || "-"}</h3>
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               {conversations.map((conversation) => (
                 <button
@@ -299,10 +319,7 @@ export function ChatDashboard() {
                         : "white",
                   }}
                 >
-                  {(conversation.name && conversation.name.trim()) ||
-                    (conversation.type === 1 ? "Direct chat" : "Group")}
-                  <div>{conversation.conversationId}</div>
-                  <div>{conversation.participantIds.join(", ")}</div>
+                  {conversationTitle(conversation)}
                 </button>
               ))}
             </div>
@@ -316,6 +333,12 @@ export function ChatDashboard() {
             <Conversation
               conversationId={selectedConversationId}
               senderId={activeUserId}
+              title={conversationTitle(
+                conversations.find(
+                  (c) => c.conversationId === selectedConversationId,
+                ) ?? { conversationId: "", type: 0, name: null, createdAtUtc: "", participantIds: [] },
+              )}
+              userMap={userMap}
             />
           ) : (
             <div style={{ color: "#555" }}>

@@ -1,18 +1,22 @@
 using Chat.Gateway.Hubs;
+using Chat.Gateway.Options;
+using Chat.Gateway.Services;
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
 
 builder.Services.AddControllers();
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
 builder.Services.AddSignalR();
+
+builder.Services.AddSingleton<ConversationTracker>();
+builder.Services.AddSingleton<IUserIdProvider, SubClaimUserIdProvider>();
 
 builder.Services.AddCors(options =>
 {
@@ -26,25 +30,21 @@ builder.Services.AddCors(options =>
     });
 });
 
-builder.Services.AddHttpClient("messaging", c =>
-{
-    c.BaseAddress = new Uri("http://localhost:5129");
-});
+builder.Services
+    .AddOptions<ServiceUrlsOptions>()
+    .BindConfiguration(ServiceUrlsOptions.SectionName)
+    .ValidateDataAnnotations()
+    .ValidateOnStart();
 
-builder.Services.AddHttpClient("conversation", c =>
-{
-    c.BaseAddress = new Uri("http://localhost:5282");
-});
+var serviceUrls = builder.Configuration
+    .GetSection(ServiceUrlsOptions.SectionName)
+    .Get<ServiceUrlsOptions>()
+    ?? throw new InvalidOperationException($"Missing configuration section '{ServiceUrlsOptions.SectionName}'.");
 
-builder.Services.AddHttpClient("users", c =>
-{
-    c.BaseAddress = new Uri("http://localhost:5355");
-});
-
-builder.Services.AddHttpClient("auth", c =>
-{
-    c.BaseAddress = new Uri("http://localhost:5455");
-});
+builder.Services.AddHttpClient("messaging", c => c.BaseAddress = new Uri(serviceUrls.Messaging));
+builder.Services.AddHttpClient("conversation", c => c.BaseAddress = new Uri(serviceUrls.Conversation));
+builder.Services.AddHttpClient("users", c => c.BaseAddress = new Uri(serviceUrls.Users));
+builder.Services.AddHttpClient("auth", c => c.BaseAddress = new Uri(serviceUrls.Auth));
 
 var jwt = builder.Configuration.GetSection("Jwt");
 var signingKey = jwt["SigningKey"] ?? throw new InvalidOperationException("Missing Jwt:SigningKey");
