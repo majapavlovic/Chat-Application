@@ -1,10 +1,12 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Chat.Gateway.Controllers;
 
+[Authorize]
 [ApiController]
 [Route("api/chat")]
-public class ChatHistoryController : ControllerBase
+public class ChatHistoryController : GatewayControllerBase
 {
     private readonly IHttpClientFactory _httpClientFactory;
 
@@ -17,14 +19,8 @@ public class ChatHistoryController : ControllerBase
     public async Task<IActionResult> GetConversationMessages(string conversationId)
     {
         var client = _httpClientFactory.CreateClient("messaging");
-
-        var res = await client.GetAsync($"/api/messages/conversation/{Uri.EscapeDataString(conversationId)}");
-        if (!res.IsSuccessStatusCode)
-        {
-            return StatusCode((int)res.StatusCode);
-        }
-
-        var messages = await res.Content.ReadFromJsonAsync<object>();
-        return Ok(messages);
+        var res = await client.GetAsync(
+            $"/api/messages/conversation/{Uri.EscapeDataString(conversationId)}");
+        return await ToActionResultAsync(res);
     }
 }

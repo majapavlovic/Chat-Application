@@ -1,4 +1,6 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using System.Net.Http.Json;
 
 namespace Chat.Gateway.Controllers;
@@ -14,6 +16,7 @@ public class AuthController : GatewayControllerBase
         _httpClientFactory = httpClientFactory;
     }
 
+    [EnableRateLimiting("auth_ip")]
     [HttpPost("register")]
     public async Task<IActionResult> Register([FromBody] object body)
     {
@@ -26,6 +29,7 @@ public class AuthController : GatewayControllerBase
         return await HandleAuthResponseAsync(res);
     }
 
+    [EnableRateLimiting("auth_ip")]
     [HttpPost("login")]
     public async Task<IActionResult> Login([FromBody] object body)
     {
@@ -71,24 +75,14 @@ public class AuthController : GatewayControllerBase
         return NoContent();
     }
 
+    [Authorize]
     [HttpGet("me")]
     public async Task<IActionResult> Me()
     {
-        var token = Request.Cookies["access_token"];
-
-        if (string.IsNullOrWhiteSpace(token) &&
-            Request.Headers.TryGetValue("Authorization", out var authHeader))
-        {
-            token = authHeader.ToString().Replace("Bearer ", "", StringComparison.OrdinalIgnoreCase).Trim();
-        }
-
-        if (string.IsNullOrWhiteSpace(token))
-            return Unauthorized();
-
+        var token = Request.Cookies["access_token"]!;
         var client = _httpClientFactory.CreateClient("auth");
         client.DefaultRequestHeaders.Authorization =
             new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
-
         var res = await client.GetAsync("/api/auth/me");
         return await ToActionResultAsync(res);
     }

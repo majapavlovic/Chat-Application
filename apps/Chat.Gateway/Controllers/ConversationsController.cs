@@ -1,10 +1,12 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Chat.Gateway.Controllers;
 
+[Authorize]
 [ApiController]
 [Route("api/conversations")]
-public class ConversationsController : ControllerBase
+public class ConversationsController : GatewayControllerBase
 {
     private readonly IHttpClientFactory _httpClientFactory;
 
@@ -18,13 +20,7 @@ public class ConversationsController : ControllerBase
     {
         var client = _httpClientFactory.CreateClient("conversation");
         var res = await client.GetAsync($"/api/conversations?userId={Uri.EscapeDataString(userId)}");
-
-        if (!res.IsSuccessStatusCode)
-        {
-            return StatusCode((int)res.StatusCode);
-        }
-
-        return Ok(await res.Content.ReadFromJsonAsync<object>());
+        return await ToActionResultAsync(res);
     }
 
     [HttpGet("{conversationId}")]
@@ -32,13 +28,7 @@ public class ConversationsController : ControllerBase
     {
         var client = _httpClientFactory.CreateClient("conversation");
         var res = await client.GetAsync($"/api/conversations/{Uri.EscapeDataString(conversationId)}");
-
-        if (!res.IsSuccessStatusCode)
-        {
-            return StatusCode((int)res.StatusCode);
-        }
-
-        return Ok(await res.Content.ReadFromJsonAsync<object>());
+        return await ToActionResultAsync(res);
     }
 
     [HttpPost]
@@ -46,8 +36,6 @@ public class ConversationsController : ControllerBase
     {
         var client = _httpClientFactory.CreateClient("conversation");
         var res = await client.PostAsJsonAsync("/api/conversations", body);
-        var payload = await res.Content.ReadFromJsonAsync<object>();
-
-        return StatusCode((int)res.StatusCode, payload);
+        return await ToActionResultAsync(res);
     }
 }
