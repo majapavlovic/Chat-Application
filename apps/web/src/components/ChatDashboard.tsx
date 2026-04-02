@@ -5,15 +5,14 @@ import {
   fetchConversations,
   fetchMe,
   fetchUsers,
-  loginAuth,
   logout,
-  registerAuth,
   updatePresence,
 } from "../api/chatApi";
 import { ConversationDto, UserDto } from "../common/types";
 import { Conversation } from "./ConversationComponent";
-import { UserSidebar } from "./UserSidebar";
+import { LoginPage } from "./LoginPage";
 import { resetChatConnection } from "../signalr/connection";
+import "./ChatLayout.css";
 
 export function ChatDashboard() {
   const [users, setUsers] = useState<UserDto[]>([]);
@@ -22,16 +21,21 @@ export function ChatDashboard() {
   const [selectedConversationId, setSelectedConversationId] = useState("");
   const [directUserId, setDirectUserId] = useState("");
   const [groupName, setGroupName] = useState("");
-  const [groupMembers, setGroupMembers] = useState("");
-  const [error, setError] = useState("");
+  const [groupMembers, setGroupMembers] = useState<string[]>([]);
+  const [panelError, setPanelError] = useState("");
   const [authUsernameInput, setAuthUsernameInput] = useState("");
-  const [authDisplayNameInput, setAuthDisplayNameInput] = useState("");
-  const [authPasswordInput, setAuthPasswordInput] = useState("");
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [showNewChat, setShowNewChat] = useState(false);
+  const [newChatTab, setNewChatTab] = useState<"direct" | "group">("direct");
 
   const userMap = useMemo(
     () => Object.fromEntries(users.map((u) => [u.userId, u])),
     [users],
+  );
+
+  const otherUsers = useMemo(
+    () => users.filter((u) => u.userId !== activeUserId),
+    [users, activeUserId],
   );
 
   const conversationTitle = (conv: ConversationDto): string => {
@@ -39,7 +43,9 @@ export function ChatDashboard() {
     if (conv.type === 1) {
       const otherId = conv.participantIds.find((id) => id !== activeUserId);
       return otherId
-        ? (userMap[otherId]?.displayName ?? userMap[otherId]?.username ?? otherId)
+        ? (userMap[otherId]?.displayName ??
+            userMap[otherId]?.username ??
+            otherId)
         : "Direct chat";
     }
     const names = conv.participantIds
@@ -57,11 +63,7 @@ export function ChatDashboard() {
     try {
       await updatePresence(userId, true);
     } catch (e) {
-      const message = String(e);
-      if (!message.includes("404")) {
-        throw e;
-      }
-
+      if (!String(e).includes("404")) throw e;
       await createUser(userId, username, displayName);
       await updatePresence(userId, true);
     }
@@ -70,17 +72,12 @@ export function ChatDashboard() {
   const loadUsers = async (preferredUserId?: string) => {
     const items = await fetchUsers();
     setUsers(items);
-
     if (preferredUserId && items.some((u) => u.userId === preferredUserId)) {
       setActiveUserId(preferredUserId);
       return;
     }
-
     setActiveUserId((current) => {
-      if (current && items.some((u) => u.userId === current)) {
-        return current;
-      }
-
+      if (current && items.some((u) => u.userId === current)) return current;
       return items[0]?.userId ?? "";
     });
   };
@@ -95,6 +92,7 @@ export function ChatDashboard() {
     );
   };
 
+  // Session restore on mount
   useEffect(() => {
     void (async () => {
       try {
@@ -110,69 +108,26 @@ export function ChatDashboard() {
     })();
   }, []);
 
+  // Reload conversations when active user changes
   useEffect(() => {
     if (!activeUserId) {
       setConversations([]);
       setSelectedConversationId("");
       return;
     }
-
-    void loadConversations(activeUserId).catch((e) => setError(String(e)));
+    void loadConversations(activeUserId).catch(() => {});
   }, [activeUserId]);
 
-  const handleSelectUser = (userId: string) => {
-    setError("");
-    if (userId !== activeUserId) {
-      setDirectUserId(userId);
-    }
-  };
-
-  const handleRegister = async () => {
-    setError("");
-    try {
-      await logout();
-      await resetChatConnection();
-      setIsAuthenticated(false);
-      setActiveUserId("");
-
-      const auth = await registerAuth({
-        username: authUsernameInput.trim(),
-        displayName: authDisplayNameInput.trim(),
-        password: authPasswordInput,
-      });
-
-      setIsAuthenticated(true);
-      setActiveUserId(auth.userId);
-      setAuthUsernameInput(auth.username);
-      await ensureUserPresence(auth.userId, auth.username, auth.displayName);
-      await loadUsers(auth.userId);
-    } catch (e) {
-      setError(String(e));
-    }
-  };
-
-  const handleLogin = async () => {
-    setError("");
-    try {
-      await logout();
-      await resetChatConnection();
-      setIsAuthenticated(false);
-      setActiveUserId("");
-
-      await loginAuth({
-        username: authUsernameInput.trim(),
-        password: authPasswordInput,
-      });
-
-      const me = await fetchMe();
-      setIsAuthenticated(true);
-      setActiveUserId(me.userId);
-      setAuthUsernameInput(me.username);
-      await ensureUserPresence(me.userId, me.username, me.displayName);
-      await loadUsers(me.userId);
-    } catch (e) {
-      setError(String(e));
-    }
+  const handleAuth = async (
+    userId: string,
+    username: string,
+    displayName: string,
+  ) => {
+    setActiveUserId(userId);
+    setAuthUsernameInput(username);
+    setIsAuthenticated(true);
+    await ensureUserPresence(userId, username, displayName);
+    await loadUsers(userId);
   };
 
   const handleLogout = async () => {
@@ -181,7 +136,6 @@ export function ChatDashboard() {
         await updatePresence(activeUserId, false);
       } catch {}
     }
-
     await logout();
     await resetChatConnection();
     setIsAuthenticated(false);
@@ -191,162 +145,216 @@ export function ChatDashboard() {
   };
 
   const handleCreateDirect = async () => {
-    setError("");
-    if (!activeUserId || !directUserId.trim()) return;
-
+    setPanelError("");
+    if (!activeUserId || !directUserId) return;
     try {
-      const conversation = await createConversation({
+      const conv = await createConversation({
         type: 1,
         name: null,
-        participantIds: [activeUserId, directUserId.trim()],
+        participantIds: [activeUserId, directUserId],
       });
-
       await loadConversations(activeUserId);
-      setSelectedConversationId(conversation.conversationId);
+      setSelectedConversationId(conv.conversationId);
+      setShowNewChat(false);
+      setDirectUserId("");
     } catch (e) {
-      setError(String(e));
+      setPanelError(String(e).replace(/^Error:\s*/, ""));
     }
   };
 
   const handleCreateGroup = async () => {
-    setError("");
-    if (!activeUserId) return;
-
-    const extraMembers = groupMembers
-      .split(",")
-      .map((item) => item.trim())
-      .filter(Boolean);
-
+    setPanelError("");
+    if (!activeUserId || groupMembers.length === 0) return;
     try {
-      const conversation = await createConversation({
+      const conv = await createConversation({
         type: 2,
         name: groupName.trim() || null,
-        participantIds: [activeUserId, ...extraMembers],
+        participantIds: [activeUserId, ...groupMembers],
       });
-
       await loadConversations(activeUserId);
-      setSelectedConversationId(conversation.conversationId);
+      setSelectedConversationId(conv.conversationId);
+      setShowNewChat(false);
       setGroupName("");
-      setGroupMembers("");
+      setGroupMembers([]);
     } catch (e) {
-      setError(String(e));
+      setPanelError(String(e).replace(/^Error:\s*/, ""));
     }
   };
 
+  const toggleGroupMember = (userId: string) =>
+    setGroupMembers((prev) =>
+      prev.includes(userId)
+        ? prev.filter((id) => id !== userId)
+        : [...prev, userId],
+    );
+
+  if (!isAuthenticated) {
+    return (
+      <LoginPage
+        onAuth={(uid, uname, dname) => void handleAuth(uid, uname, dname)}
+      />
+    );
+  }
+
+  const selectedConv = conversations.find(
+    (c) => c.conversationId === selectedConversationId,
+  );
+  const myDisplayName = userMap[activeUserId]?.displayName ?? authUsernameInput;
+
   return (
-    <div style={{ padding: 16, fontFamily: "sans-serif" }}>
-      <h1>Dashboard</h1>
-
-      <div style={{ border: "1px solid #ddd", padding: 12, marginBottom: 12 }}>
-        <h3>Auth</h3>
-        <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-          <input
-            value={authUsernameInput}
-            onChange={(e) => setAuthUsernameInput(e.target.value)}
-            placeholder='username'
-            style={{ flex: 1, padding: 8 }}
-          />
-          <input
-            value={authDisplayNameInput}
-            onChange={(e) => setAuthDisplayNameInput(e.target.value)}
-            placeholder='display name (register)'
-            style={{ flex: 1, padding: 8 }}
-          />
-          <input
-            type='password'
-            value={authPasswordInput}
-            onChange={(e) => setAuthPasswordInput(e.target.value)}
-            placeholder='password'
-            style={{ flex: 1, padding: 8 }}
-          />
-        </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={() => void handleRegister()}>Register</button>
-          <button onClick={() => void handleLogin()}>Login</button>
+    <div className='chat-layout'>
+      <aside className='chat-sidebar'>
+        <div className='sidebar-header'>
+          <div className='sidebar-avatar'>
+            {myDisplayName[0]?.toUpperCase() ?? "?"}
+          </div>
+          <div className='sidebar-profile'>
+            <div className='sidebar-name'>{myDisplayName}</div>
+            <div className='sidebar-username'>@{authUsernameInput}</div>
+          </div>
           <button
+            className='sidebar-logout'
             onClick={() => void handleLogout()}
-            disabled={!isAuthenticated}
+            title='Sign out'
           >
-            Logout
+            Sign out
           </button>
-          <div style={{ alignSelf: "center" }}>
-            Current user: {(userMap[activeUserId]?.displayName ?? authUsernameInput) || "-"}
-          </div>
         </div>
-      </div>
 
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "320px 1fr",
-          gap: 16,
-          alignItems: "start",
-        }}
-      >
-        <UserSidebar
-          users={users}
-          activeUserId={activeUserId}
-          directUserId={directUserId}
-          groupName={groupName}
-          groupMembers={groupMembers}
-          onDirectUserIdChange={setDirectUserId}
-          onGroupNameChange={setGroupName}
-          onGroupMembersChange={setGroupMembers}
-          onSelectUser={handleSelectUser}
-          onCreateDirect={() => void handleCreateDirect()}
-          onCreateGroup={() => void handleCreateGroup()}
-        />
-
-        <div>
-          <div
-            style={{ border: "1px solid #ddd", padding: 12, marginBottom: 12 }}
+        <div className='sidebar-actions'>
+          <button
+            className='btn-new-chat'
+            onClick={() => {
+              setShowNewChat((v) => !v);
+              setPanelError("");
+            }}
           >
-            <h3>Conversations for {(userMap[activeUserId]?.displayName ?? authUsernameInput) || "-"}</h3>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {conversations.map((conversation) => (
-                <button
-                  key={conversation.conversationId}
-                  onClick={() =>
-                    setSelectedConversationId(conversation.conversationId)
-                  }
-                  style={{
-                    textAlign: "left",
-                    padding: 8,
-                    border: "1px solid #ccc",
-                    background:
-                      conversation.conversationId === selectedConversationId
-                        ? "#eee"
-                        : "white",
-                  }}
-                >
-                  {conversationTitle(conversation)}
-                </button>
-              ))}
+            {showNewChat ? "✕ Cancel" : "+ New Chat"}
+          </button>
+        </div>
+
+        {showNewChat && (
+          <div className='new-chat-panel'>
+            <div className='new-chat-tabs'>
+              <button
+                className={newChatTab === "direct" ? "active" : ""}
+                onClick={() => setNewChatTab("direct")}
+              >
+                Direct
+              </button>
+              <button
+                className={newChatTab === "group" ? "active" : ""}
+                onClick={() => setNewChatTab("group")}
+              >
+                Group
+              </button>
             </div>
+
+            {newChatTab === "direct" && (
+              <>
+                <label>Start chat with</label>
+                <select
+                  value={directUserId}
+                  onChange={(e) => setDirectUserId(e.target.value)}
+                >
+                  <option value=''>— pick a user —</option>
+                  {otherUsers.map((u) => (
+                    <option key={u.userId} value={u.userId}>
+                      {u.displayName} (@{u.username})
+                    </option>
+                  ))}
+                </select>
+                <button
+                  className='btn-create'
+                  disabled={!directUserId}
+                  onClick={() => void handleCreateDirect()}
+                >
+                  Start chat
+                </button>
+              </>
+            )}
+
+            {newChatTab === "group" && (
+              <>
+                <label>Group name</label>
+                <input
+                  value={groupName}
+                  onChange={(e) => setGroupName(e.target.value)}
+                  placeholder='e.g. Project team'
+                />
+                <label>Members</label>
+                <div className='group-member-list'>
+                  {otherUsers.map((u) => (
+                    <label key={u.userId} className='group-member-item'>
+                      <input
+                        type='checkbox'
+                        checked={groupMembers.includes(u.userId)}
+                        onChange={() => toggleGroupMember(u.userId)}
+                      />
+                      {u.displayName} (@{u.username})
+                    </label>
+                  ))}
+                </div>
+                <button
+                  className='btn-create'
+                  disabled={groupMembers.length === 0}
+                  onClick={() => void handleCreateGroup()}
+                >
+                  Create group
+                </button>
+              </>
+            )}
+
+            {panelError && <div className='panel-error'>{panelError}</div>}
           </div>
+        )}
 
-          {error ? (
-            <div style={{ color: "crimson", marginBottom: 12 }}>{error}</div>
-          ) : null}
-
-          {isAuthenticated ? (
-            <Conversation
-              conversationId={selectedConversationId}
-              senderId={activeUserId}
-              title={conversationTitle(
-                conversations.find(
-                  (c) => c.conversationId === selectedConversationId,
-                ) ?? { conversationId: "", type: 0, name: null, createdAtUtc: "", participantIds: [] },
-              )}
-              userMap={userMap}
-            />
-          ) : (
-            <div style={{ color: "#555" }}>
-              Login required to connect to chat.
+        <div className='conv-list'>
+          {conversations.map((conv) => (
+            <div
+              key={conv.conversationId}
+              className={`conv-item ${conv.conversationId === selectedConversationId ? "active" : ""}`}
+              onClick={() => setSelectedConversationId(conv.conversationId)}
+            >
+              <div className='conv-avatar'>
+                {conversationTitle(conv)[0]?.toUpperCase() ?? "?"}
+              </div>
+              <div className='conv-info'>
+                <div className='conv-title'>{conversationTitle(conv)}</div>
+                <div className='conv-badge'>
+                  {conv.type === 1
+                    ? "Direct message"
+                    : `Group · ${conv.participantIds.length} members`}
+                </div>
+              </div>
+            </div>
+          ))}
+          {conversations.length === 0 && (
+            <div className='conv-empty'>
+              No conversations yet.
+              <br />
+              Click <strong>+ New Chat</strong> to start.
             </div>
           )}
         </div>
-      </div>
+      </aside>
+
+      {/* ── Main area ────────────────────────────────────────────────────── */}
+      <main className='chat-main'>
+        {selectedConversationId ? (
+          <Conversation
+            conversationId={selectedConversationId}
+            senderId={activeUserId}
+            title={selectedConv ? conversationTitle(selectedConv) : "Chat"}
+            userMap={userMap}
+          />
+        ) : (
+          <div className='chat-welcome'>
+            <h3>Welcome, {myDisplayName}!</h3>
+            <p>Select a conversation or start a new chat.</p>
+          </div>
+        )}
+      </main>
     </div>
   );
 }

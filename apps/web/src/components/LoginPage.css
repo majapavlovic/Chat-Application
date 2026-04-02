@@ -1,0 +1,148 @@
+.lp-root {
+  display: flex;
+  height: 100vh;
+  align-items: center;
+  justify-content: center;
+  background: #f4f6fb;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  padding: 24px;
+}
+
+.lp-card {
+  width: 100%;
+  max-width: 400px;
+  background: #fff;
+  border-radius: 16px;
+  padding: 40px 36px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+}
+
+.lp-heading {
+  font-size: 26px;
+  font-weight: 700;
+  color: #111827;
+  margin: 0 0 28px;
+  text-align: center;
+}
+
+.lp-tabs {
+  display: flex;
+  background: #e8eaf0;
+  border-radius: 12px;
+  padding: 4px;
+  gap: 4px;
+  margin-bottom: 24px;
+}
+
+.lp-tabs button {
+  flex: 1;
+  padding: 10px;
+  border: none;
+  background: transparent;
+  border-radius: 9px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #6b7280;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.lp-tabs button.active {
+  background: #fff;
+  color: #6c63ff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  font-weight: 600;
+}
+
+.lp-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 20px;
+}
+
+.lp-fields label {
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+  margin-top: 8px;
+}
+
+.lp-optional {
+  font-weight: 400;
+  color: #9ca3af;
+}
+
+.lp-fields input {
+  padding: 11px 14px;
+  border: 1.5px solid #e5e7eb;
+  border-radius: 10px;
+  font-size: 15px;
+  outline: none;
+  background: #f9fafb;
+  color: #111827;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.lp-fields input:focus {
+  border-color: #6c63ff;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(108, 99, 255, 0.1);
+}
+
+.lp-error {
+  background: #fee2e2;
+  color: #dc2626;
+  padding: 10px 14px;
+  border-radius: 9px;
+  font-size: 14px;
+  margin-bottom: 14px;
+}
+
+.lp-submit {
+  width: 100%;
+  padding: 13px;
+  background: #6c63ff;
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+  margin-bottom: 18px;
+}
+
+.lp-submit:hover:not(:disabled) {
+  background: #5a52d5;
+}
+
+.lp-submit:active:not(:disabled) {
+  transform: scale(0.99);
+}
+
+.lp-submit:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.lp-switch {
+  font-size: 14px;
+  color: #6b7280;
+  text-align: center;
+  margin: 0;
+}
+
+.lp-switch button {
+  background: none;
+  border: none;
+  color: #6c63ff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+}
+
+.lp-switch button:hover {
+  text-decoration: underline;
+}
